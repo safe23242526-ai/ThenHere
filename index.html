@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#121212" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>PastLens — Street & Place History</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #181b22;
+      --accent: #f59e0b;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --border: #2a2f3a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; padding-bottom: 80px; line-height: 1.5; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    h1 { font-size: 1.35rem; letter-spacing: -0.5px; }
+    .badge { background: rgba(245, 158, 11, 0.15); color: var(--accent); padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+    .gps-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .gps-coords { font-size: 0.85rem; color: var(--muted); }
+    button {
+      background: var(--accent); color: #111; border: none; border-radius: 10px;
+      padding: 10px 14px; font-weight: 700; font-size: 0.9rem; cursor: pointer;
+    }
+    button.secondary { background: #262b36; color: var(--text); border: 1px solid var(--border); }
+    .timeline-box label { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 8px; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .era-pills { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .era-pill {
+      background: #222630; color: var(--muted); border: 1px solid var(--border);
+      padding: 5px 10px; border-radius: 8px; font-size: 0.8rem; cursor: pointer;
+    }
+    .era-pill.active { background: var(--accent); color: #111; font-weight: 700; border-color: var(--accent); }
+    .memory-item { border-left: 3px solid var(--accent); padding-left: 12px; margin-top: 12px; }
+    .memory-meta { font-size: 0.78rem; color: var(--accent); font-weight: 600; }
+    .memory-title { font-size: 1rem; font-weight: 700; margin: 2px 0; }
+    .memory-desc { font-size: 0.9rem; color: #d1d5db; }
+    .memory-dist { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+    input, textarea, select {
+      width: 100%; background: #111318; color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px; margin-top: 8px; font-size: 0.9rem;
+    }
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 10px 0; }
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #1f2937; color: #fff; padding: 10px 16px; border-radius: 10px;
+      font-size: 0.85rem; border: 1px solid #374151; display: none; z-index: 99;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PastLens</h1>
+    <span class="badge">Free PWA Prototype</span>
+  </header>
+
+  <!-- GPS Location Card -->
+  <div class="card">
+    <div class="gps-row">
+      <div>
+        <div style="font-weight:700; font-size:0.95rem;">Your Current Spot</div>
+        <div id="gpsStatus" class="gps-coords">Tap "Locate Me" to get GPS</div>
+      </div>
+      <button id="locateBtn" onclick="getLocation()">Locate Me</button>
+    </div>
+  </div>
+
+  <!-- Timeline Slider Card -->
+  <div class="card timeline-box">
+    <label>
+      <span>Timeline Year</span>
+      <strong id="yearDisplay" style="color:var(--accent);">1970</strong>
+    </label>
+    <input id="yearSlider" type="range" min="1950" max="2026" value="1970" oninput="onYearChange(this.value)" />
+    <div class="era-pills">
+      <span class="era-pill" onclick="setYear(1970)">1970</span>
+      <span class="era-pill" onclick="setYear(1985)">1985</span>
+      <span class="era-pill" onclick="setYear(2000)">2000</span>
+      <span class="era-pill" onclick="setYear(2026)">Today (2026)</span>
+    </div>
+  </div>
+
+  <!-- Historical & Community Stories -->
+  <div class="card">
+    <div style="font-weight:700; font-size:1rem;">Layered Past & Stories</div>
+    <div id="storiesList"></div>
+  </div>
+
+  <!-- Add Memory at Current Location -->
+  <div class="card">
+    <div style="font-weight:700; font-size:1rem;">Add a Memory Here</div>
+    <input id="memTitle" type="text" placeholder="Place / Shop / Building name" />
+    <input id="memYear" type="number" min="1800" max="2026" placeholder="Year (e.g. 1978)" />
+    <textarea id="memDesc" rows="3" placeholder="What happened here? Who lived or ran a shop here?"></textarea>
+    <div style="margin-top:10px; display:flex; gap:8px;">
+      <button onclick="addMemory()" style="flex:1;">Save Memory at GPS</button>
+      <button class="secondary" onclick="resetDemoData()">Reset</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const STORAGE_KEY = "pastlens_memories_v1";
+
+    // Default sample entries (you can replace coordinates with real spots you test)
+    const defaultMemories = [
+      {
+        id: 1,
+        title: "Corner Book & Binding Shop",
+        year: 1970,
+        desc: "A small wooden stall selling old paperbacks, school notebooks, and local newspapers.",
+        lat: 24.2513,
+        lng: 89.9167
+      },
+      {
+        id: 2,
+        title: "Family Courtyard House",
+        year: 1985,
+        desc: "Neighbors gathered here in the evenings to listen to radio news and share tea.",
+        lat: 24.2513,
+        lng: 89.9167
+      },
+      {
+        id: 3,
+        title: "Modern Pharmacy & Grocery",
+        year: 2024,
+        desc: "Converted into a busy neighborhood shop serving daily essentials.",
+        lat: 24.2513,
+        lng: 89.9167
+      }
+    ];
+
+    let userCoords = null;
+    let selectedYear = 1970;
+    let memories = loadMemories();
+
+    function loadMemories() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [...defaultMemories];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) && parsed.length ? parsed : [...defaultMemories];
+      } catch {
+        return [...defaultMemories];
+      }
+    }
+
+    function saveMemories() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.style.display = "block";
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => { el.style.display = "none"; }, 2500);
+    }
+
+    function getLocation() {
+      if (!navigator.geolocation) {
+        showToast("Geolocation is not supported on this device.");
+        return;
+      }
+      document.getElementById("gpsStatus").textContent = "Getting GPS location...";
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          document.getElementById("gpsStatus").textContent =
+            `Lat: ${userCoords.lat.toFixed(5)}, Lng: ${userCoords.lng.toFixed(5)}`;
+          renderStories();
+          showToast("Location updated!");
+        },
+        (err) => {
+          document.getElementById("gpsStatus").textContent = "Location permission denied or unavailable";
+          showToast("Please allow location access in browser.");
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    function distanceMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = (d) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    function setYear(yr) {
+      document.getElementById("yearSlider").value = yr;
+      onYearChange(yr);
+    }
+
+    function onYearChange(yr) {
+      selectedYear = Number(yr);
+      document.getElementById("yearDisplay").textContent = selectedYear;
+      renderStories();
+    }
+
+    function renderStories() {
+      const container = document.getElementById("storiesList");
+
+      // Show entries up to selectedYear, prioritizing closest to selectedYear
+      const filtered = memories
+        .filter((m) => m.year <= selectedYear)
+        .map((m) => {
+          const dist = userCoords ? distanceMeters(userCoords.lat, userCoords.lng, m.lat, m.lng) : null;
+          return { ...m, dist, yearDiff: Math.abs(selectedYear - m.year) };
+        })
+        .sort((a, b) => a.yearDiff - b.yearDiff);
+
+      if (!filtered.length) {
+        container.innerHTML = `<div class="empty">No records found up to ${selectedYear}. Try moving the slider or add a memory below!</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered
+        .map(
+          (m) => `
+          <div class="memory-item">
+            <div class="memory-meta">Year: ${m.year}</div>
+            <div class="memory-title">${escapeHtml(m.title)}</div>
+            <div class="memory-desc">${escapeHtml(m.desc)}</div>
+            <div class="memory-dist">
+              ${m.dist !== null ? `Distance from you: ~${m.dist}m` : `Saved pin: ${m.lat.toFixed(4)}, ${m.lng.toFixed(4)}`}
+            </div>
+          </div>
+        `
+        )
+        .join("");
+    }
+
+    function addMemory() {
+      const title = document.getElementById("memTitle").value.trim();
+      const year = Number(document.getElementById("memYear").value);
+      const desc = document.getElementById("memDesc").value.trim();
+
+      if (!title || !year || !desc) {
+        showToast("Please fill in title, year, and story.");
+        return;
+      }
+
+      if (!userCoords) {
+        showToast("Tap 'Locate Me' first so your GPS spot is saved.");
+        return;
+      }
+
+      const newItem = {
+        id: Date.now(),
+        title,
+        year,
+        desc,
+        lat: userCoords.lat,
+        lng: userCoords.lng
+      };
+
+      memories.unshift(newItem);
+      saveMemories();
+      setYear(year);
+
+      document.getElementById("memTitle").value = "";
+      document.getElementById("memYear").value = "";
+      document.getElementById("memDesc").value = "";
+      showToast("Memory saved to your current GPS spot!");
+    }
+
+    function resetDemoData() {
+      localStorage.removeItem(STORAGE_KEY);
+      memories = [...defaultMemories];
+      renderStories();
+      showToast("Reset to sample memories.");
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    renderStories();
+  </script>
+</body>
+</html>
